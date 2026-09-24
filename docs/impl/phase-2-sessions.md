@@ -571,4 +571,32 @@ export function useSessionActions(gatewayId: string) {
 
 ---
 
+## Execution Log (2026-09-24)
+
+**Commit:** `35468b9 feat: Phase 2 — sessions list and CRUD` — 6 files added, 4 modified.
+**Agent:** OpenCode `build` agent, glm-5.3-flash, ~6 min runtime.
+
+**Verification results:**
+- `tsc --noEmit` — zero errors
+- `npx expo lint` — clean
+
+**New files created:**
+- `src/services/session-sync.ts` — SessionSyncEngine (fullSync + incrementalSync)
+- `src/components/SessionRow.tsx` — Session row component with all KR-8 fields
+- `src/hooks/useForegroundSync.ts` — AppState listener for incremental sync
+- `src/hooks/useSessionActions.ts` — CRUD wiring with optimistic updates
+
+**Modified files:**
+- `src/services/gateway-api.ts` — added session endpoint methods + types
+- `src/store/sessions.ts` — full SessionRow store with derived fields
+- `src/app/SessionsScreen.tsx` — FlashList, pull-to-refresh, context menu
+
+**Plan deviations:**
+| # | Plan said | Actual | Reason |
+|---|-----------|--------|--------|
+| 1 | FlashList `estimatedItemSize={72}` | Prop removed | FlashList v2 dropped this prop |
+| 2 | Inline text input for rename | `Alert.prompt` | iOS-only API; plan said "not modal" but Alert.prompt is the simplest inline approach on RN |
+
+---
+
 ## Next: [[phase-3-chat-runs]]
