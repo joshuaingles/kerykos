@@ -471,6 +471,35 @@ For the full license text, see: https://fsl.software/FSL-1.1-Apache-2.0.template
 
 ---
 
+## Execution Log (2026-09-24)
+
+**Commit:** `9335d42 feat: Phase 6 — monetization and ship prep` — 5 files added, 2 modified.
+**Agent:** OpenCode `build` agent, glm-5.3-flash, ~6 min runtime.
+
+**Verification results:**
+- `tsc --noEmit` — zero errors
+- `npx expo lint` — clean
+
+**New files created:**
+- `src/services/license.ts` — LicenseService (RevenueCat wrapper)
+- `src/hooks/useFeature.ts` — useFeature hook + isFeatureEnabled async
+- `src/components/ProUpgradePrompt.tsx` — lock prompt with purchase/restore
+- `docs/app-store-prep.md` — AI disclosure, privacy labels, store listing
+- `eas.json` — development/preview/production build profiles
+- `LICENSE.md` — FSL 1.1-Apache-2.0
+
+**Modified files:**
+- `src/app/SettingsScreen.tsx` — RevenueCat init + license status display
+- `src/feature-flags.ts` — FREE_FEATURES array confirmed
+
+**Plan deviations:** None.
+
+**Post-implementation notes:**
+- RevenueCat API keys are placeholders (`appl_XXXXX` / `goog_XXXXX`) — replace after RevenueCat dashboard setup
+- react-native-purchases is a native module — requires dev/EAS build (not Expo Go)
+
+---
+
 ## End of Implementation Plan
 
 All 6 phases complete the v1 implementation. Return to [[README]] for project overview.
