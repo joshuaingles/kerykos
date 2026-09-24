@@ -2,6 +2,7 @@ import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useMemo } from 'react';
+import { useForegroundProbe } from '@/hooks/useForegroundProbe';
 import ChatHeader from '@/components/ChatHeader';
 import SessionDetailScreen from '@/components/SessionDetailScreen';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -30,6 +31,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
 export function RootNavigator() {
+  useForegroundProbe();
   const hasGateway = useGatewayStore((s) => s.gateways.length > 0);
   const { tokens } = useTheme();
 
