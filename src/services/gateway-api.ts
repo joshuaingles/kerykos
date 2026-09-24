@@ -121,12 +121,65 @@ export class GatewayAPI {
   }
 
   // === Sessions (Phase 2) ===
-  // async listSessions(...)      — implemented in phase-2-sessions.md §2.1
-  // async createSession(...)     — implemented in phase-2-sessions.md §2.1
-  // async renameSession(...)     — implemented in phase-2-sessions.md §2.1
-  // async deleteSession(...)     — implemented in phase-2-sessions.md §2.1
-  // async forkSession(...)       — implemented in phase-2-sessions.md §2.1
-  // async getSessionMessages(...)— implemented in phase-2-sessions.md §2.1
+
+  /** List sessions paginated (KR-6). */
+  async listSessions(options: {
+    limit?: number;
+    offset?: number;
+    includeArchived?: boolean;
+  } = {}): Promise<SessionListResponse> {
+    const params = new URLSearchParams();
+    params.set('limit', String(Math.min(options.limit ?? 200, 200))); // max 200
+    if (options.offset) params.set('offset', String(options.offset));
+    if (options.includeArchived) {
+      // ⚠️ Param name unverified — confirm at impl time per §9a.
+      params.set('include_archived', 'true');
+    }
+    return this.request<SessionListResponse>(`/api/sessions?${params}`);
+  }
+
+  /** Create session (KR-7). */
+  async createSession(title?: string): Promise<SessionResponse> {
+    return this.request<SessionResponse>('/api/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ title }),
+    });
+  }
+
+  /** Rename session (KR-7). */
+  async renameSession(sessionId: string, title: string): Promise<void> {
+    await this.request(`/api/sessions/${sessionId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title }),
+    });
+  }
+
+  /** Delete session (KR-7). Destructive — confirm in UI first. */
+  async deleteSession(sessionId: string): Promise<void> {
+    await this.request(`/api/sessions/${sessionId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  /** Fork session (KR-7). */
+  async forkSession(sessionId: string): Promise<SessionResponse> {
+    return this.request<SessionResponse>(`/api/sessions/${sessionId}/fork`, {
+      method: 'POST',
+    });
+  }
+
+  /** Get session details. */
+  async getSession(sessionId: string): Promise<SessionResponse> {
+    return this.request<SessionResponse>(`/api/sessions/${sessionId}`);
+  }
+
+  /** Get session transcript (KR-18, Phase 3 uses for offline cache). */
+  async getSessionMessages(sessionId: string): Promise<SessionMessage[]> {
+    // ⚠️ Wrapper shape unverified: smoke test #4 confirmed token_count per
+    // message but not whether the response is a bare array or {data:[…]}.
+    // Confirm at impl time per §9a and unwrap here — callers see bare array.
+    return this.request<SessionMessage[]>(`/api/sessions/${sessionId}/messages`);
+  }
 
   // === Chat (Phase 3) ===
   // async createRun(...)         — implemented in phase-3-chat-runs.md §3.2
@@ -138,6 +191,52 @@ export class GatewayAPI {
 }
 
 // === Shared response types (defined here — used by phases 3/5) ===
+
+export interface SessionResponse {
+  id: string;
+  title: string;
+  model: string;
+  source: string;                    // api_server, desktop, dashboard, cron, cli, telegram…
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  reasoning_tokens: number;
+  estimated_cost_usd: number | null;
+  actual_cost_usd: number | null;
+  api_call_count: number;
+  tool_call_count: number;
+  message_count: number;
+  // ⚠️ api-surface lists started_at/ended_at as "float/string" — the numeric
+  // epoch form is ASSUMED. Verify on a live gateway at impl time per §9a and
+  // add a string-parse fallback if ISO strings ever appear.
+  started_at: number;
+  ended_at: number | null;
+  end_reason: string | null;
+  last_active: number;               // derived from last_activity_at — sync watermark
+  parent_session_id: string | null;
+  pinned: boolean;
+  archived: boolean;
+  hidden: boolean;
+  preview: string;                   // last-message preview
+  user_id: string;
+}
+
+export interface SessionListResponse {
+  object: 'list';
+  data: SessionResponse[];
+  limit: number;
+  offset: number;
+  has_more: boolean;
+}
+
+export interface SessionMessage {
+  role: 'user' | 'assistant' | 'system' | 'tool';
+  content: string;
+  token_count: number | null;
+  // other fields per api-surface.md
+  [key: string]: unknown;
+}
 
 /** GET /v1/health — unauthed liveness (wire-verified smoke test #1). */
 export interface HealthResponse {
