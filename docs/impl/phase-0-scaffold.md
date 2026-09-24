@@ -432,4 +432,27 @@ export function setSetting<T>(key: string, value: T): void {
 
 ---
 
+## Execution Log (2026-09-24)
+
+**Commit:** `70f4dbd feat: Phase 0 — project scaffold` — 33 files, 11K+ lines.
+**Agent:** OpenCode `build` agent, glm-5.3-flash, 18 min runtime.
+
+**Verification results:**
+- `tsc --noEmit` — zero errors
+- `expo lint` — clean (including `no-explicit-any: error` + `require()` ban)
+- `expo export` — builds successfully
+- `expo-doctor` — 21/21 checks pass
+- Dev server boots, compiles 1041 modules
+
+**Plan deviations:**
+| # | Plan said | Actual | Reason |
+|---|-----------|--------|--------|
+| 1 | MMKV: `new MMKV()` | `createMMKV()` | react-native-mmkv v4 API change (factory function replaces constructor) |
+| 2 | RN 0.79.x | RN 0.86.3 | SDK 57's actual default — plan's version guess was stale |
+| 3 | TS 5.x | TS 6.0.3 | SDK 57 ships TS 6; `baseUrl` deprecated in TS 6, paths made tsconfig-relative instead |
+| 4 | Skin colors: real values | Placeholder TODOs | Per plan §0.5 — real port from `skin_engine.py` deferred |
+| 5 | Expo Go compatible | Needs dev/EAS build | MMKV is a native module — Expo Go doesn't include it |
+
+---
+
 ## Next: [[phase-1-gateway-auth]]
