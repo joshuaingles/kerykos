@@ -181,13 +181,132 @@ export class GatewayAPI {
     return this.request<SessionMessage[]>(`/api/sessions/${sessionId}/messages`);
   }
 
-  // === Chat (Phase 3) ===
-  // async createRun(...)         — implemented in phase-3-chat-runs.md §3.2
-  // async getRunStatus(...)      — implemented in phase-3-chat-runs.md §3.2
-  // async steerRun(...)          — implemented in phase-3-chat-runs.md §3.2
-  // async stopRun(...)           — implemented in phase-3-chat-runs.md §3.2
-  // async respondToApproval(...)— implemented in phase-3-chat-runs.md §3.2
-  // getRunEventsUrl(...)         — implemented in phase-3-chat-runs.md §3.2
+  // === Runs (Phase 3 — KR-10, KR-11, KR-14) ===
+
+  /**
+   * Create a run (KR-10).
+   * POST /v1/runs with Idempotency-Key header.
+   * Returns 202 {run_id, status:"started"}.
+   * Idempotency: retry after network drop replays the same run — never
+   * creates a duplicate.
+   */
+  async createRun(
+    request: RunCreateRequest,
+    idempotencyKey: string,
+    sessionHeaders: Record<string, string> = {},
+  ): Promise<RunCreateResponse> {
+    return this.request<RunCreateResponse>('/v1/runs', {
+      method: 'POST',
+      headers: {
+        'Idempotency-Key': idempotencyKey,
+        // X-Hermes-Session-Id (+ X-Hermes-Session-Key) per api-surface.md
+        ...sessionHeaders,
+      },
+      body: JSON.stringify(request),
+    });
+  }
+
+  /**
+   * Poll run status (KR-11 — detach/reattach).
+   * GET /v1/runs/{id} → status + usage.
+   * Use when returning from background to check run state.
+   */
+  async getRunStatus(runId: string): Promise<RunStatusResponse> {
+    return this.request<RunStatusResponse>(`/v1/runs/${runId}`);
+  }
+
+  /**
+   * Stream run events via SSE (KR-10).
+   * GET /v1/runs/{id}/events → SSE stream.
+   * Events: message.delta, reasoning.available, tool.progress, run.completed,
+   * run.cancelled
+   */
+  getRunEventsUrl(runId: string): string {
+    return `${this.baseUrl}/v1/runs/${runId}/events`;
+  }
+
+  /**
+   * Steer mid-run (KR-14).
+   * POST /v1/runs/{id}/steer with correction text.
+   * Undelivered steer text carried on terminal event for client replay.
+   * ⚠️ Request body field name ("text") unverified — smoke test #9 verified
+   * the {accepted:true} RESPONSE, not the request field. Confirm per §9a.
+   */
+  async steerRun(runId: string, text: string): Promise<{ accepted: boolean }> {
+    return this.request(`/v1/runs/${runId}/steer`, {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    });
+  }
+
+  /**
+   * Stop mid-run (KR-14).
+   * POST /v1/runs/{id}/stop → terminal "cancelled".
+   * ⚠️ Response body shape: wire-verified {status:"stopping"} (smoke #10) —
+   * terminal "cancelled" arrives via the events stream afterwards.
+   */
+  async stopRun(runId: string): Promise<{ status: string }> {
+    return this.request(`/v1/runs/${runId}/stop`, {
+      method: 'POST',
+    });
+  }
+
+  /**
+   * Approve/deny (KR-13).
+   * POST /v1/runs/{id}/approval.
+   * Scoped to app-initiated runs only (KR-13).
+   * ⚠️ Request body field name ("decision") unverified — confirm per §9a.
+   */
+  async respondToApproval(
+    runId: string,
+    decision: 'approve' | 'deny',
+  ): Promise<{ accepted: boolean }> {
+    return this.request(`/v1/runs/${runId}/approval`, {
+      method: 'POST',
+      body: JSON.stringify({ decision }),
+    });
+  }
+}
+
+// === Run types (KR-10/11/14) ===
+
+export interface RunCreateRequest {
+  input: string | {
+    role: string;
+    content: string | { type: string; text?: string; image_url?: { url: string } }[];
+  }[];
+  session_id?: string; // attach to existing session for continuity
+  model?: string;
+}
+
+export interface RunCreateResponse {
+  run_id: string;
+  status: 'started';
+  replayed?: boolean;
+}
+
+export type RunStatus = 'started' | 'running' | 'completed' | 'cancelled'
+  | 'failed' | 'partial' | 'interrupted';
+
+export interface RunStatusResponse {
+  run_id: string;
+  status: RunStatus;
+  usage?: {
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+  };
+  // ⚠️ Wire note (KR-18): token fields on the status GET were null in the
+  // smoke tests — usage comes from the run.completed terminal event instead.
+}
+
+export interface RunCompletedEvent {
+  type: 'run.completed';
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+  };
 }
 
 // === Shared response types (defined here — used by phases 3/5) ===

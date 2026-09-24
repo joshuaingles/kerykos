@@ -1,10 +1,13 @@
 import { ThemeProvider } from '@/theme/ThemeProvider';
+import { ServicesProvider } from './composition';
 import { RootNavigator } from './navigation';
 
 export default function App() {
   return (
     <ThemeProvider>
-      <RootNavigator />
+      <ServicesProvider>
+        <RootNavigator />
+      </ServicesProvider>
     </ThemeProvider>
   );
 }
