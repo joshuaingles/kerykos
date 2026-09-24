@@ -14,6 +14,8 @@ import {
   persistActiveRun,
 } from '@/store/chat';
 import { useGatewayStore } from '@/store/gateway';
+import { promptQueue } from './prompt-queue';
+import { formatImageContent } from './image-picker';
 
 /**
  * Runs lifecycle orchestrator (phase-3 §3.4): create, stream, detach/reattach,
@@ -126,6 +128,82 @@ export class RunsManager {
   }
 
   /**
+   * KR-17: send a message with an attached image (KR-17a wire-verified).
+   * input becomes [{role:user, content:[text + image_url(data-URL)]}].
+   */
+  async sendImageMessage(
+    gatewayId: string,
+    sessionId: string,
+    text: string,
+    dataUrl: string,
+  ): Promise<void> {
+    const store = this.store;
+    const idempotencyKey = uuidv4();
+    const userMessageId = uuidv4();
+
+    store.addMessage(sessionId, {
+      id: userMessageId,
+      role: 'user',
+      content: text,
+      timestamp: Date.now(),
+      isStreaming: false,
+      imageDataUrl: dataUrl,
+    });
+
+    const assistantMessageId = uuidv4();
+    store.addMessage(sessionId, {
+      id: assistantMessageId,
+      role: 'assistant',
+      content: '',
+      timestamp: Date.now(),
+      isStreaming: true,
+    });
+
+    const api = this.getApi(gatewayId);
+
+    try {
+      const { run_id } = await this.retryWithBackoff(() =>
+        api.createRun(
+          {
+            input: formatImageContent(text, dataUrl),
+            session_id: sessionId,
+          },
+          idempotencyKey,
+          this.echoHeaders(gatewayId, sessionId),
+        ),
+      );
+
+      const activeRun = {
+        runId: run_id,
+        sessionId,
+        status: 'started' as const,
+        idempotencyKey,
+        startedAt: Date.now(),
+      };
+      this.store.setActiveRun(sessionId, activeRun);
+      persistActiveRun(sessionId, {
+        runId: run_id,
+        sessionId,
+        idempotencyKey,
+        startedAt: activeRun.startedAt,
+      });
+      this.connectStream(api, sessionId, run_id, assistantMessageId);
+    } catch (err) {
+      const gwErr = err as GatewayError;
+      const is401 = gwErr instanceof GatewayError && gwErr.status === 401;
+      this.store.updateMessage(sessionId, assistantMessageId, {
+        content: is401
+          ? 'Authentication failed — check the API key in Settings.'
+          : `Error: ${(err as Error).message}`,
+        isStreaming: false,
+        error: true,
+      });
+      this.store.setActiveRun(sessionId, null);
+      throw err;
+    }
+  }
+
+  /**
    * Connect SSE stream for a run (KR-10).
    * Handles all event types: message.delta, reasoning.available, tool.progress,
    * run.completed, run.cancelled, run.steered, approval.requested
@@ -218,6 +296,15 @@ export class RunsManager {
             timestamp: Date.now(),
             isStreaming: false,
             runId,
+          });
+        }
+        // KR-16: auto-submit next queued prompt after the run settles
+        const next = promptQueue.dequeue(sessionId);
+        if (next) {
+          void this.sendMessage(api.gatewayId, sessionId, next.content).catch(() => {
+            // Send failed (e.g. network gone) — requeue so no queued prompt
+            // is silently lost.
+            promptQueue.enqueue(sessionId, next.content);
           });
         }
         break;

@@ -1,16 +1,18 @@
 import {
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
+  type ImageStyle,
+  type TextStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlashList, FlashListRef } from '@shopify/flash-list';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { FlashList } from '@shopify/flash-list';
 import { useFocusEffect, useRoute, type RouteProp } from '@react-navigation/native';
 import Markdown from 'react-native-markdown-display';
 import SyntaxHighlighter from 'react-native-syntax-highlighter';
@@ -20,13 +22,17 @@ import {
   useChatStore,
   loadTrackedRun,
   type ChatMessage,
-  type ToolCall,
 } from '@/store/chat';
 import { useGatewayAPI, useServices } from './composition';
 import { loadCapabilities, selectChatTransport } from '@/services/capabilities';
 import { sendChatMessageFallback } from '@/services/session-chat-fallback';
+import { promptQueue } from '@/services/prompt-queue';
+import { showVisionWarning } from '@/services/vision';
 import { v4 as uuidv4 } from 'uuid';
 import { ApprovalCard } from '@/components/ApprovalCard';
+import { ChatComposer } from '@/components/ChatComposer';
+import { ToolActivityCard } from '@/components/ToolActivityCard';
+import { useScrollBehavior } from '@/hooks/useScrollBehavior';
 import type { RootStackParamList } from './navigation';
 
 type ChatRoute = RouteProp<RootStackParamList, 'Chat'>;
@@ -67,43 +73,65 @@ export default function ChatScreen() {
     void runsManager.restoreApprovalState(gatewayId, sessionId);
   }, [gatewayId, sessionId, runsManager]);
 
-  // === KR-16: stick-to-bottom with manual-scroll escape hatch ===
-  const listRef = useRef<FlashListRef<ChatMessage> | null>(null);
-  const autoScroll = useRef(true);
+  // === KR-16: stick-to-bottom with manual-scroll escape hatch (4.4 hook) ===
   const lastContent = useChatStore(s => s.messagesBySession.get(sessionId)?.at(-1)?.content);
+  const {
+    listRef,
+    onScrollBeginDrag,
+    onScroll,
+    scrollToBottom,
+    showJumpToBottom,
+  } = useScrollBehavior(messages, lastContent);
 
-  useEffect(() => {
-    if (!autoScroll.current || lastContent === undefined) return undefined;
-    const id = setTimeout(() => listRef.current?.scrollToEnd?.({ animated: true }), 50);
-    return () => clearTimeout(id);
-  }, [messages.length, lastContent]);
-
-  const [composer, setComposer] = useState('');
-  const [sending, setSending] = useState(false);
   const isRunActive = activeRun?.status === 'started' || activeRun?.status === 'running';
 
-  const handleSend = useCallback(async () => {
-    const text = composer.trim();
-    if (!text) return;
-
-    if (!isRunActive) {
-      setComposer('');
-      setSending(true);
+  // KR-17: derive vision capability from /api/model/options for the
+  // current session's model — never a hardcoded non-vision list (4.7).
+  const [modelSupportsVision, setModelSupportsVision] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
       try {
-        if (transport === 'runs') {
-          await runsManager.sendMessage(gatewayId, sessionId, text);
-        } else {
-          await sendViaSessionChatFallback(api, sessionId, text);
-        }
-      } finally {
-        setSending(false);
+        const [session, options] = await Promise.all([
+          api.getSession(sessionId),
+          api.getModelOptions(),
+        ]);
+        if (cancelled) return;
+        setModelSupportsVision(
+          session.model
+            ? showVisionWarning(session.model, options)
+            : null,
+        );
+      } catch {
+        if (!cancelled) setModelSupportsVision(null); // unknown — don't warn
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [api, sessionId]);
+
+  const handleSend = useCallback(async (text: string) => {
+    if (!text) return;
+    if (!isRunActive) {
+      if (transport === 'runs') {
+        await runsManager.sendMessage(gatewayId, sessionId, text);
+      } else {
+        await sendViaSessionChatFallback(api, sessionId, text);
       }
     } else {
       // KR-14: mid-run — the send button steers the active run
-      setComposer('');
       void runsManager.steer(gatewayId, sessionId, text);
     }
-  }, [composer, isRunActive, transport, gatewayId, sessionId, runsManager, api]);
+  }, [isRunActive, transport, gatewayId, sessionId, runsManager, api]);
+
+  // KR-16: queue action from the composer
+  const handleQueue = useCallback((text: string) => {
+    if (text) promptQueue.enqueue(sessionId, text);
+  }, [sessionId]);
+
+  // KR-17: image send path — runs-only (KR-17a wire-verified over /v1/runs).
+  const handleSendImage = useCallback(async (text: string, dataUrl: string) => {
+    await runsManager.sendImageMessage(gatewayId, sessionId, text, dataUrl);
+  }, [gatewayId, sessionId, runsManager]);
 
   return (
     <SafeAreaView
@@ -120,12 +148,22 @@ export default function ChatScreen() {
           data={messages}
           renderItem={({ item }) => <MessageBubble message={item} />}
           keyExtractor={(m) => m.id}
-          // KR-16: manual-scroll escape hatch
-          onScrollBeginDrag={() => { autoScroll.current = false; }}
+          // KR-16: manual-scroll escape hatch + near-bottom re-enable
+          onScrollBeginDrag={onScrollBeginDrag}
+          onScroll={onScroll}
+          scrollEventThrottle={100}
           ListFooterComponent={
             isRunActive ? <Text style={[styles.streaming, { color: tokens.accent }]}>Streaming…</Text> : null
           }
         />
+
+        {showJumpToBottom && (
+          <Pressable style={styles.jumpToBottom} onPress={scrollToBottom}>
+            <Text style={[styles.jumpToBottomText, { color: tokens.accent }]}>
+              ↓ New messages
+            </Text>
+          </Pressable>
+        )}
 
         {approval && (
           <View style={styles.approvalDock}>
@@ -136,21 +174,16 @@ export default function ChatScreen() {
           </View>
         )}
 
-        <View style={[styles.composerRow, { borderColor: tokens.border, backgroundColor: tokens.card }]}>
-          <TextInput
-            style={[styles.input, { color: tokens.text }]}
-            placeholder={isRunActive ? 'Steer the run…' : 'Message…'}
-            placeholderTextColor={tokens.muted}
-            value={composer}
-            onChangeText={setComposer}
-            multiline
-          />
-          <Pressable onPress={() => void handleSend()} disabled={!composer.trim() || sending}>
-            <Text style={[styles.send, { color: composer.trim() ? tokens.accent : tokens.muted }]}>
-              {isRunActive ? 'Steer' : sending ? '…' : 'Send'}
-            </Text>
-          </Pressable>
-        </View>
+        <ChatComposer
+          key={sessionId}
+          sessionId={sessionId}
+          activeRun={isRunActive}
+          onSend={(t) => void handleSend(t)}
+          onSteer={(t) => void handleSend(t)}
+          onQueue={handleQueue}
+          onSendImage={(t, url) => void handleSendImage(t, url)}
+          modelSupportsVision={modelSupportsVision}
+        />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -240,7 +273,17 @@ function MessageBubble({ message }: { message: ChatMessage }) {
       ]}
     >
       {message.role === 'user' ? (
-        <Text style={[styles.messageText, { color: tokens.background }]}>{message.content}</Text>
+        <>
+          {message.imageDataUrl && (
+            <Image
+              source={{ uri: message.imageDataUrl }}
+              style={styles.sentImage}
+            />
+          )}
+          {message.content !== '' && (
+            <Text style={[styles.messageText, { color: tokens.background }]}>{message.content}</Text>
+          )}
+        </>
       ) : (
         <Markdown
           style={markdownStyles(tokens)}
@@ -270,7 +313,9 @@ function MessageBubble({ message }: { message: ChatMessage }) {
           {message.content}
         </Markdown>
       )}
-      {message.toolCalls?.map(tool => <ToolRow key={tool.id} tool={tool} />)}
+      {message.toolCalls?.map(tool => (
+        <ToolActivityCard key={tool.id} tool={tool} />
+      ))}
       {message.usage && (
         <Text style={[styles.usage, { color: tokens.muted }]}>
           {message.usage.inputTokens} in / {message.usage.outputTokens} out tokens
@@ -289,20 +334,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   );
 }
 
-/** KR-15: collapsed-by-default tool activity row. */
-function ToolRow({ tool }: { tool: ToolCall }) {
-  const { tokens } = useTheme();
-  const icon = tool.state === 'running' ? '⏳' : tool.state === 'failed' ? '✖' : '✓';
-  return (
-    <View style={styles.toolRow}>
-      <Text style={{ color: tokens.muted, fontSize: 12 }}>
-        {icon} tool: {tool.name}
-      </Text>
-    </View>
-  );
-}
-
-function markdownStyles(tokens: { text: string; accent: string; muted: string }) {
+function markdownStyles(tokens: { text: string; accent: string; muted: string }): Record<string, TextStyle | ImageStyle> {
   return {
     body: { color: tokens.text },
     text: { color: tokens.text },
@@ -314,6 +346,13 @@ function markdownStyles(tokens: { text: string; accent: string; muted: string })
     paragraph: { marginTop: 0, marginBottom: 4 },
     fence: { backgroundColor: '#16181d' },
     code_inline: { color: tokens.accent, backgroundColor: 'rgba(127,127,127,0.2)' },
+    // KR-17: images in assistant messages render inline (markdown ![alt](url))
+    image: {
+      width: 220,
+      borderRadius: 8,
+      marginVertical: 8,
+      resizeMode: 'contain',
+    },
   };
 }
 
@@ -339,18 +378,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
   },
-  toolRow: { marginTop: 6 },
+  sentImage: {
+    width: 220,
+    height: 220,
+    borderRadius: 8,
+    resizeMode: 'cover',
+    marginBottom: 6,
+  },
+  jumpToBottom: {
+    position: 'absolute',
+    bottom: 8,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(22,27,34,0.95)',
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  jumpToBottomText: { fontSize: 13, fontWeight: '600' },
   usage: { fontSize: 11, marginTop: 6 },
   streaming: { textAlign: 'center', fontSize: 13, paddingBottom: 6 },
   errorTag: { fontSize: 11, color: '#e17055', marginTop: 4 },
   approvalDock: { paddingHorizontal: 12, paddingBottom: 4 },
-  composerRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    padding: 8,
-    gap: 8,
-  },
-  input: { flex: 1, minHeight: 40, maxHeight: 120, fontSize: 15 },
-  send: { fontWeight: '600', paddingBottom: 10, paddingLeft: 6 },
 });

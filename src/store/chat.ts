@@ -30,6 +30,7 @@ export interface ChatMessage {
   isSteered?: boolean;    // steer correction applied
   usage?: RunUsage;       // KR-18: captured from run.completed's usage block
   error?: boolean;        // rendered as error notice (NFR-3)
+  imageDataUrl?: string;  // KR-17: image the user attached to this message
 }
 
 export interface ActiveRun {
