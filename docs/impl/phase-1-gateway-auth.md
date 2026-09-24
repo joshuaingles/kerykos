@@ -485,4 +485,29 @@ export function checkVersionCompatibility(serverVersion: string): {
 
 ---
 
+## Execution Log (2026-09-24)
+
+**Commit:** `2136f18 feat: Phase 1 — gateway auth and pairing` — 8 files changed, 622 insertions.
+**Agent:** OpenCode `build` agent, glm-5.3-flash, ~5 min runtime.
+
+**Verification results:**
+- `tsc --noEmit` — zero errors
+- `npx expo lint` — clean
+
+**New files created:**
+- `src/services/auth.ts` — AuthService (expo-secure-store wrapper)
+- `src/services/gateway-api.ts` — GatewayAPI REST client + all shared types
+- `src/services/capabilities.ts` — parseCapabilities, selectChatTransport, probeAndCache
+- `src/services/version.ts` — checkVersionCompatibility
+- `src/hooks/useForegroundProbe.ts` — AppState listener for NFR-4 re-probe
+
+**Modified files:**
+- `src/app/PairingScreen.tsx` — full two-step pairing with KR-5 error states
+- `src/store/gateway.ts` — apiForGateway/apiForActiveGateway helpers
+- `src/app/navigation.tsx` — mounts useForegroundProbe
+
+**Plan deviations:** None.
+
+---
+
 ## Next: [[phase-2-sessions]]
