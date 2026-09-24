@@ -1259,4 +1259,38 @@ export async function sendChatMessageFallback(
 
 ---
 
+## Execution Log (2026-09-24)
+
+**Commit:** `8d22f37 feat: Phase 3 — chat runs and SSE streaming` — 8 files added, 5 modified.
+**Agent:** OpenCode `build` agent, glm-5.3-flash, ~12 min runtime.
+
+**Verification results:**
+- `tsc --noEmit` — zero errors
+- `npx expo lint` — clean (0 errors, 0 warnings)
+
+**New files created:**
+- `src/services/sse.ts` — SSEParser with connect/consumeResponse, keepalive skip
+- `src/services/runs-manager.ts` — full runs lifecycle (send/stream/reattach/steer/stop/approve)
+- `src/services/session-chat-fallback.ts` — fallback for non-runs gateways
+- `src/services/types.ts` — SessionSnapshot, ModelPricing, re-exports
+- `src/app/composition.tsx` — ServicesProvider composition root
+- `src/components/ApprovalCard.tsx` — approve/deny card
+- `src/types/hljs-styles.d.ts` — module declaration for syntax highlighter styles
+- `src/types/react-native-syntax-highlighter.d.ts` — module declaration
+
+**Modified files:**
+- `src/services/gateway-api.ts` — added runs API methods + types
+- `src/store/chat.ts` — full ChatState with MMKV run persistence
+- `src/app/ChatScreen.tsx` — FlashList messages, Markdown, composer, reattach
+
+**Plan deviations:**
+| # | Plan said | Actual | Reason |
+|---|-----------|--------|--------|
+| 1 | `new MMKV({ id: 'kerykos-chat' })` | `createMMKV(...)` | MMKV v4 API (same as Phase 0 deviation) |
+| 2 | `estimatedItemSize={80}` on FlashList | Prop dropped | FlashList v2 (same as Phase 2 deviation) |
+| 3 | Plan assumed `react-native-syntax-highlighter` ships types | No types shipped | Added `.d.ts` module declarations |
+| 4 | Plan used `ComponentRef` import | Removed | Not needed for the actual ref pattern used |
+
+---
+
 ## Next: [[phase-4-tier2-ux]]
