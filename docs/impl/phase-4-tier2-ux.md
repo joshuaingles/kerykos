@@ -525,4 +525,32 @@ export function ToolActivityCard({ tool }: { tool: ToolCall }) {
 
 ---
 
+## Execution Log (2026-09-24)
+
+**Commit:** `ab28975 feat: Phase 4 — tier 2 UX differentiators` — 7 files added, 4 modified.
+**Agent:** OpenCode `build` agent, glm-5.3-flash, ~10 min runtime.
+
+**Verification results:**
+- `tsc --noEmit` — zero errors
+- `npx expo lint` — 0 problems
+
+**New files created:**
+- `src/components/ChatComposer.tsx` — growing composer, image attach, steer/queue, drafts
+- `src/components/ToolActivityCard.tsx` — collapsible tool cards with state indicators
+- `src/hooks/useScrollBehavior.ts` — auto-scroll, manual escape, jump-to-bottom
+- `src/services/drafts.ts` — MMKV-backed per-session draft persistence
+- `src/services/image-picker.ts` — expo-image-picker + base64 data URL
+- `src/services/prompt-queue.ts` — PromptQueue class
+- `src/services/vision.ts` — showVisionWarning from model options
+
+**Modified files:**
+- `src/services/runs-manager.ts` — auto-submit queued prompt on run.completed, sendImageMessage path
+- `src/store/chat.ts` — imageDataUrl on ChatMessage
+- `src/app/ChatScreen.tsx` — ChatComposer + useScrollBehavior + ToolActivityCard integration
+- `src/components/ChatHeader.tsx` — vision flag integration
+
+**Plan deviations:** None.
+
+---
+
 ## Next: [[phase-5-cost-analytics]]
