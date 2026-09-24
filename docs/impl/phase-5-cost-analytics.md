@@ -765,4 +765,34 @@ export function AnalyticsScreen() {
 
 ---
 
+## Execution Log (2026-09-24)
+
+**Commit:** `3f81228 feat: Phase 5 — cost display and analytics` — 4 files added, 5 modified.
+**Agent:** OpenCode `build` agent, glm-5.3-flash, ~12 min runtime.
+
+**Verification results:**
+- `tsc --noEmit` — zero errors
+- `npm run lint` — clean
+
+**New files created:**
+- `src/analytics/sync-engine.ts` — SnapshotSyncEngine (fullBackfill + incrementalSync + polling)
+- `src/analytics/cost-enrichment.ts` — fetchModelPricing, computeDisplayCost
+- `src/analytics/queries.ts` — AnalyticsQueries (all aggregation queries)
+- `src/store/analytics.ts` — useAnalyticsStore with pricingCache
+
+**Modified files:**
+- `src/services/storage.ts` — extended with AnalyticsDB class (SQLite schema + helpers)
+- `src/app/AnalyticsScreen.tsx` — rebuilt with StatCards, charts, focus-gated sync
+- `src/components/ChatHeader.tsx` — LiveChatHeader with pricing enrichment
+- `src/app/composition.tsx` — added analyticsDb, getSyncEngine, getAnalyticsQueries
+- `src/app/ChatScreen.tsx` — pricing refresh integration
+
+**Plan deviations:**
+| # | Plan said | Actual | Reason |
+|---|-----------|--------|--------|
+| 1 | `VictoryPie` from victory-native | `PolarChart` + `Pie.Chart`/`Pie.Slice` | victory-native v42 removed VictoryPie; new PolarChart API is the replacement |
+| 2 | victory-native v42 | Installed via `npx expo install` | Resolved to compatible version automatically |
+
+---
+
 ## Next: [[phase-6-monetization-ship]]
