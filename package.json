@@ -1,0 +1,43 @@
+{
+  "name": "kerykos",
+  "version": "1.0.0",
+  "main": "src/app/index.ts",
+  "dependencies": {
+    "@react-navigation/bottom-tabs": "^7.19.2",
+    "@react-navigation/native": "^7.4.1",
+    "@react-navigation/native-stack": "^7.19.2",
+    "@shopify/flash-list": "2.0.2",
+    "expo": "~57.0.25",
+    "expo-file-system": "~57.0.7",
+    "expo-image-picker": "~57.0.20",
+    "expo-secure-store": "~57.0.4",
+    "expo-sqlite": "~57.0.3",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-markdown-display": "^7.0.2",
+    "react-native-mmkv": "^4.3.2",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "~4.26.0",
+    "react-native-syntax-highlighter": "^2.1.0",
+    "react-syntax-highlighter": "^16.1.1",
+    "uuid": "^14.0.2",
+    "zustand": "^4.5.7"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "@types/react-syntax-highlighter": "^15.5.13",
+    "@types/uuid": "^11.0.0",
+    "eslint": "^9.39.5",
+    "eslint-config-expo": "^57.0.2",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "lint": "expo lint"
+  },
+  "private": true
+}
