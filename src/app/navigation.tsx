@@ -3,7 +3,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useMemo } from 'react';
 import { useForegroundProbe } from '@/hooks/useForegroundProbe';
-import ChatHeader from '@/components/ChatHeader';
+import { LiveChatHeader } from '@/components/ChatHeader';
 import SessionDetailScreen from '@/components/SessionDetailScreen';
 import { useTheme } from '@/theme/ThemeProvider';
 import { useGatewayStore } from '@/store/gateway';
@@ -62,7 +62,10 @@ export function RootNavigator() {
             <Stack.Screen
               name="Chat"
               component={ChatScreen}
-              options={{ headerTitle: () => <ChatHeader title="Chat" model="—" cost="$0.00" /> }}
+              options={({ route }) => ({
+                // Phase 5 §5.5: per-session cost in the chat header (KR-19)
+                headerTitle: () => <LiveChatHeader sessionId={(route.params as { sessionId: string }).sessionId} />,
+              })}
             />
             <Stack.Screen
               name="SessionDetail"

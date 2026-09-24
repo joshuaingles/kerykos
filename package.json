@@ -22,6 +22,7 @@
     "react-native-syntax-highlighter": "^2.1.0",
     "react-syntax-highlighter": "^16.1.1",
     "uuid": "^14.0.2",
+    "victory-native": "^42.0.1",
     "zustand": "^4.5.7"
   },
   "devDependencies": {

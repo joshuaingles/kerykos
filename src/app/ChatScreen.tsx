@@ -23,7 +23,8 @@ import {
   loadTrackedRun,
   type ChatMessage,
 } from '@/store/chat';
-import { useGatewayAPI, useServices } from './composition';
+import { useGatewayAPI, useServices, useAnalyticsQueries } from './composition';
+import { fetchModelPricing } from '@/analytics/cost-enrichment';
 import { loadCapabilities, selectChatTransport } from '@/services/capabilities';
 import { sendChatMessageFallback } from '@/services/session-chat-fallback';
 import { promptQueue } from '@/services/prompt-queue';
@@ -44,6 +45,8 @@ export default function ChatScreen() {
   const { sessionId, gatewayId } = route.params;
   const { tokens } = useTheme();
   const runsManager = useServices().runsManager;
+  const analyticsDb = useServices().analyticsDb;
+  const analyticsQueries = useAnalyticsQueries(gatewayId);
   const api = useGatewayAPI(gatewayId);
 
   const messages = useChatStore(s => s.messagesBySession.get(sessionId) ?? EMPTY);
@@ -108,6 +111,13 @@ export default function ChatScreen() {
     })();
     return () => { cancelled = true; };
   }, [api, sessionId]);
+
+  // Phase 5 §5.3: refresh model pricing so ChatHeader enrichment stays live
+  useEffect(() => {
+    void fetchModelPricing(api, analyticsDb, analyticsQueries).catch(() => {
+      // Silent — enrichment is best-effort; next sync retries
+    });
+  }, [api, analyticsDb, analyticsQueries]);
 
   const handleSend = useCallback(async (text: string) => {
     if (!text) return;

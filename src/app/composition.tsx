@@ -2,14 +2,17 @@ import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { useGatewayStore } from '@/store/gateway';
 import { GatewayAPI } from '@/services/gateway-api';
 import { RunsManager } from '@/services/runs-manager';
+import { AnalyticsDB } from '@/services/storage';
+import { AnalyticsQueries } from '@/analytics/queries';
+import { SnapshotSyncEngine } from '@/analytics/sync-engine';
 
 interface AppServices {
   getApi: (gatewayId: string) => GatewayAPI;
   runsManager: RunsManager;
-  // Phase 5 additions (added when phase 5 lands — same pattern):
-  // analyticsDb: AnalyticsDB;
-  // getSyncEngine: (gatewayId: string) => SnapshotSyncEngine;
-  // getAnalyticsQueries: (gatewayId: string) => AnalyticsQueries;
+  // Phase 5 (KR-4a keying: everything below resolves per gateway id)
+  analyticsDb: AnalyticsDB;
+  getSyncEngine: (gatewayId: string) => SnapshotSyncEngine;
+  getAnalyticsQueries: (gatewayId: string) => AnalyticsQueries;
 }
 
 const ServicesContext = createContext<AppServices>(null!);
@@ -38,7 +41,28 @@ export function ServicesProvider({ children }: { children: ReactNode }) {
     // KR-11/13: settle any runs persisted across a relaunch at startup
     void runsManager.recoverPersistedRuns();
 
-    return { getApi, runsManager };
+    // Phase 5: on-device analytics engine (NFR-1 — all local, no network).
+    const analyticsDb = new AnalyticsDB();
+    const analyticsQueries = new AnalyticsQueries(analyticsDb);
+
+    // One sync engine per gateway, cached (mirrors apiCache — KR-4a)
+    const syncEngineCache = new Map<string, SnapshotSyncEngine>();
+    const getSyncEngine = (gatewayId: string): SnapshotSyncEngine => {
+      let engine = syncEngineCache.get(gatewayId);
+      if (!engine) {
+        engine = new SnapshotSyncEngine(analyticsDb, analyticsQueries, getApi(gatewayId), gatewayId);
+        syncEngineCache.set(gatewayId, engine);
+      }
+      return engine;
+    };
+
+    return {
+      getApi,
+      runsManager,
+      analyticsDb,
+      getSyncEngine,
+      getAnalyticsQueries: () => analyticsQueries,
+    };
   }, []);
 
   return <ServicesContext.Provider value={services}>{children}</ServicesContext.Provider>;
@@ -51,4 +75,16 @@ export function useServices(): AppServices {
 /** Phase-2 §2.6's hook — the injectable seam for sessions CRUD. */
 export function useGatewayAPI(gatewayId: string): GatewayAPI {
   return useServices().getApi(gatewayId);
+}
+
+/** Phase-5 §5.3's hook — analytics queries bound to a gateway. */
+export function useAnalyticsQueries(gatewayId: string): AnalyticsQueries {
+  // Queries themselves key on gatewayId in SQL; the service instance is shared.
+  void gatewayId;
+  return useServices().getAnalyticsQueries(gatewayId);
+}
+
+/** Phase-5 §5.2's hook — the snapshot sync engine for a gateway. */
+export function useSyncEngine(gatewayId: string): SnapshotSyncEngine {
+  return useServices().getSyncEngine(gatewayId);
 }
