@@ -13,13 +13,18 @@ import { renderThemeProvider, createFetchMock, resetMMKV, resetSecureStore, type
 import { useGatewayStore } from '@/store/gateway';
 import { AuthService } from '@/services/auth';
 import { getSetting } from '@/services/storage';
-import * as uuidModule from 'uuid';
+
+// The setup-file jest.mock('uuid') factory is plain CJS, so `import * as`
+// yields a babel interop COPY — spying on it would not affect PairingScreen's
+// live `uuidv4` binding. Pin the real mock module exports instead.
+type UuidMock = { v4: jest.Mock; __counter: () => number };
+const uuidMock = jest.requireMock('uuid') as UuidMock;
 
 // PairingScreen generates its gateway id via uuid v4 — pinned so tests can
 // pre-seed the SecureStore key the GatewayAPI probe resolves (the probe
 // authenticates against the typed key before the screen persists it).
 const GATEWAY_ID = '00000000-0000-4000-8000-000000000042';
-jest.spyOn(uuidModule, 'v4').mockReturnValue(GATEWAY_ID);
+jest.spyOn(uuidMock, 'v4').mockReturnValue(GATEWAY_ID);
 
 type Screen = Awaited<ReturnType<typeof renderThemeProvider>>;
 
@@ -30,9 +35,9 @@ function MainStub(): null {
 
 // Wraps PairingScreen in the real navigator stack (Pairing → Main) so any
 // useNavigation() calls inside the screen resolve without throwing.
-function renderWithNav(ui: React.ReactElement): Screen {
+async function renderWithNav(ui: React.ReactElement): Promise<Screen> {
   const Stack = createNativeStackNavigator<{ Pairing: undefined; Main: undefined }>();
-  return renderThemeProvider(
+  return await renderThemeProvider(
     <NavigationContainer>
       <Stack.Navigator initialRouteName="Pairing">
         <Stack.Screen name="Pairing">{() => ui}</Stack.Screen>
@@ -74,7 +79,7 @@ describe('§5.1 Pairing flow integration', () => {
     useGatewayStore.setState({ gateways: [], activeGatewayId: null });
     createFetchMock([]);
     jest.clearAllMocks();
-    jest.spyOn(uuidModule, 'v4').mockReturnValue(GATEWAY_ID);
+    jest.spyOn(uuidMock, 'v4').mockReturnValue(GATEWAY_ID);
     // GatewayAPI resolves the key from SecureStore at request time — seed the
     // probe credential under the id the screen will generate.
     await AuthService.storeKey(GATEWAY_ID, 'sk-test-key');
@@ -103,9 +108,8 @@ describe('§5.1 Pairing flow integration', () => {
     expect(screen.getByText(/Cannot reach the gateway\. Check the URL and ensure the API server is running\./)).toBeTruthy();
     // fail-safe: nothing paired, nothing stored
     expect(useGatewayStore.getState().gateways).toHaveLength(0);
-    expect((AuthService as unknown as { storeKey: jest.Mock }).storeKey).not.toBeDefined
-      ? undefined
-      : undefined;
+    // fail-safe: the pre-seeded probe credential is untouched (nothing re-stored)
+    expect(AuthService.getKey(GATEWAY_ID)).resolves.toBe('sk-test-key');
   });
 
   it('PF-02 health 500 → gateway-down copy', async () => {
@@ -122,15 +126,110 @@ describe('§5.1 Pairing flow integration', () => {
     expect(useGatewayStore.getState().gateways).toHaveLength(0);
   });
 
-  test.todo('PF-03 capabilities 401 → bad-key copy, key NOT stored (KR-5)');
+  it('PF-03 capabilities 401 → bad-key copy, key NOT stored (KR-5)', async () => {
+    createFetchMock([
+      { path: '/v1/health', handler: { status: 200, json: { status: 'ok', platform: 'hermes-agent', version: '0.21.3' } } },
+      { path: '/v1/capabilities', handler: { status: 401, json: { error: 'gateway_auth_failed' } } },
+    ]);
 
-  test.todo('PF-04 happy path → storeKey persisted + addGateway with label "Hermes v0.21.3"');
+    const screen = await renderWithNav(<PairingScreen />);
+    await seed(screen);
+    const storeKeySpy = jest.spyOn(AuthService, 'storeKey');
+    await act(async () => { await pairUntilErrorOrSuccess(screen); });
 
-  test.todo('PF-05 http URL → unencrypted warning modal; "Pair anyway" proceeds (KR-2)');
+    await waitFor(() => expect(screen.getByText('Bad key')).toBeTruthy());
+    expect(screen.getByText(/The API key was rejected\. Check your API_SERVER_KEY in ~\/\.hermes\/\.env/)).toBeTruthy();
+    // KR-5 fail-safe: the rejected key is never persisted
+    expect(storeKeySpy).not.toHaveBeenCalled();
+    expect(useGatewayStore.getState().gateways).toHaveLength(0);
+  });
 
-  test.todo('PF-05b dismissed http warning persists — second pairing skips the modal (KR-2)');
+  it('PF-04 happy path → storeKey persisted + addGateway with label "Hermes v0.21.3"', async () => {
+    createFetchMock([
+      { path: '/v1/health', handler: { status: 200, json: { status: 'ok', platform: 'hermes-agent', version: '0.21.3' } } },
+      { path: '/v1/capabilities', handler: { status: 200, json: FULL_CAPS } },
+    ]);
 
-  test.todo('PF-06 trailing slashes stripped from the paired URL');
+    const screen = await renderWithNav(<PairingScreen />);
+    await seed(screen);
+    const storeKeySpy = jest.spyOn(AuthService, 'storeKey');
+    await act(async () => { await pairUntilErrorOrSuccess(screen); });
+
+    expect(storeKeySpy).toHaveBeenCalledWith(GATEWAY_ID, 'sk-test-key');
+    await waitFor(() => expect(useGatewayStore.getState().gateways).toHaveLength(1));
+    const gateway = useGatewayStore.getState().gateways[0]!;
+    expect(gateway.label).toMatch(/Hermes v0\.21\.3/);
+    expect(gateway.base_url).toBe('https://gw.example.com:8642');
+    expect(gateway.key_ref).toBe(`gw_key_${GATEWAY_ID}`);
+  });
+
+  it('PF-05 http URL → unencrypted warning modal; "Pair anyway" proceeds (KR-2)', async () => {
+    createFetchMock([
+      { path: '/v1/health', handler: { status: 200, json: { status: 'ok', platform: 'hermes-agent', version: '0.21.3' } } },
+      { path: '/v1/capabilities', handler: { status: 200, json: FULL_CAPS } },
+    ]);
+
+    const screen = await renderWithNav(<PairingScreen />);
+    await fireEvent.changeText(screen.getByPlaceholderText('http://192.168.1.5:8642'), 'http://192.168.1.5:8642');
+    await fireEvent.changeText(screen.getByPlaceholderText('API_SERVER_KEY'), 'sk-test-key');
+    await fireEvent.press(screen.getByText('Pair Gateway'));
+
+    await waitFor(() => expect(screen.getByText('Unencrypted connection')).toBeTruthy());
+    expect(screen.getByText(/Your credentials and chats will travel unencrypted/)).toBeTruthy();
+    // modal blocks pairing — nothing hit the wire yet
+    expect(calls()).toHaveLength(0);
+
+    await act(async () => { await fireEvent.press(screen.getByText('Pair anyway')); });
+    await waitFor(() => expect(useGatewayStore.getState().gateways).toHaveLength(1));
+    expect(calls()).toHaveLength(3); // health + probe health + capabilities
+  });
+
+  it('PF-05b dismissed http warning persists — second pairing skips the modal (KR-2)', async () => {
+    createFetchMock([
+      { path: '/v1/health', handler: { status: 200, json: { status: 'ok', platform: 'hermes-agent', version: '0.21.3' } } },
+      { path: '/v1/capabilities', handler: { status: 200, json: FULL_CAPS } },
+    ]);
+
+    const screen = await renderWithNav(<PairingScreen />);
+    await fireEvent.changeText(screen.getByPlaceholderText('http://192.168.1.5:8642'), 'http://192.168.1.5:8642');
+    await fireEvent.changeText(screen.getByPlaceholderText('API_SERVER_KEY'), 'sk-test-key');
+    await fireEvent.press(screen.getByText('Pair Gateway'));
+    await waitFor(() => expect(screen.getByText('Unencrypted connection')).toBeTruthy());
+
+    // dismiss without proceeding
+    await act(async () => { await fireEvent.press(screen.getByText('Edit URL')); });
+    expect(screen.queryByText('Unencrypted connection')).toBeNull();
+    expect(useGatewayStore.getState().gateways).toHaveLength(0);
+    expect(calls()).toHaveLength(0);
+
+    // dismissal was persisted to MMKV, keyed on the URL
+    expect(getSetting<string | null>('http_warn_http://192.168.1.5:8642', null))
+      .toBe('http://192.168.1.5:8642');
+
+    // second press skips the modal and pairs straight through
+    await act(async () => { await fireEvent.press(screen.getByText('Pair Gateway')); });
+    expect(screen.queryByText('Unencrypted connection')).toBeNull();
+    await waitFor(() => expect(useGatewayStore.getState().gateways).toHaveLength(1));
+  });
+
+  it('PF-06 trailing slashes stripped from the paired URL', async () => {
+    createFetchMock([
+      { path: '/v1/health', handler: { status: 200, json: { status: 'ok', platform: 'hermes-agent', version: '0.21.3' } } },
+      { path: '/v1/capabilities', handler: { status: 200, json: FULL_CAPS } },
+    ]);
+
+    const screen = await renderWithNav(<PairingScreen />);
+    await fireEvent.changeText(screen.getByPlaceholderText('http://192.168.1.5:8642'), 'https://gw.example.com:8642///');
+    await fireEvent.changeText(screen.getByPlaceholderText('API_SERVER_KEY'), 'sk-test-key');
+    await act(async () => { await fireEvent.press(screen.getByText('Pair Gateway')); });
+
+    await waitFor(() => expect(useGatewayStore.getState().gateways).toHaveLength(1));
+    const gateway = useGatewayStore.getState().gateways[0]!;
+    expect(gateway.base_url).toBe('https://gw.example.com:8642');
+    // the probe itself hit the stripped URL
+    expect(calls()[0]!.url).toBe('https://gw.example.com:8642/v1/health');
+    expect(gateway.label).toMatch(/Hermes v0\.21\.3/);
+  });
 
   it('empty URL or key → no-op (no pairing attempted)', async () => {
     createFetchMock([
