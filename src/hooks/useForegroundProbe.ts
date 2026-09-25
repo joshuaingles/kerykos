@@ -1,23 +1,24 @@
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
 import { useGatewayStore } from '@/store/gateway';
-import { GatewayAPI } from '@/services/gateway-api';
 import { probeAndCache } from '@/services/capabilities';
 import { checkVersionCompatibility } from '@/services/version';
+import { useServices } from '@/app/composition';
 
 /**
  * Re-probe capabilities + version on app foreground (NFR-4 version-check protocol).
- * Mount once in the root navigator.
+ * Mount once in the root navigator. The GatewayAPI comes from the composition
+ * root's per-gateway cache (NFR-6, audit W2) — never constructed inline.
  */
 export function useForegroundProbe(): void {
+  const { getApi } = useServices();
+
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
       if (state !== 'active') return;
-      const { activeGatewayId, gateways } = useGatewayStore.getState();
+      const { activeGatewayId } = useGatewayStore.getState();
       if (!activeGatewayId) return;
-      const gw = gateways.find((g) => g.id === activeGatewayId);
-      if (!gw) return;
-      void probeAndCache(new GatewayAPI(gw.base_url, activeGatewayId)).then(
+      void probeAndCache(getApi(activeGatewayId)).then(
         ({ health }) => {
           const compat = checkVersionCompatibility(
             typeof health.version === 'string' ? health.version : '',
@@ -33,5 +34,5 @@ export function useForegroundProbe(): void {
       );
     });
     return () => sub.remove();
-  }, []);
+  }, [getApi]);
 }

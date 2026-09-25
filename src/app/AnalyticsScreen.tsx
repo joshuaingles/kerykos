@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { PolarChart, Pie } from 'victory-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '@/theme/ThemeProvider';
+import type { ThemeTokens } from '@/theme/tokens';
 import { useGatewayStore } from '@/store/gateway';
 import { useSyncEngine, useAnalyticsQueries, useGatewayAPI, useServices } from './composition';
 import { fetchModelPricing } from '@/analytics/cost-enrichment';
@@ -155,15 +156,6 @@ function pieData(items: { model: string | null; cost: number }[]) {
     value: Math.max(item.cost, 0.0001),
     color: PIE_PALETTE[i % PIE_PALETTE.length] ?? PIE_PALETTE[0]!,
   }));
-}
-
-interface ThemeTokens {
-  background: string;
-  text: string;
-  muted: string;
-  accent: string;
-  card: string;
-  border: string;
 }
 
 function StatCard({ title, value, tokens }: { title: string; value: string; tokens: ThemeTokens }) {

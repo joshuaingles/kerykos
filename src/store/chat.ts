@@ -101,6 +101,8 @@ interface ChatState {
   addMessage: (sessionId: string, message: ChatMessage) => void;
   updateMessage: (sessionId: string, messageId: string, update: Partial<ChatMessage>) => void;
   appendToMessage: (sessionId: string, messageId: string, delta: string) => void;
+  /** KR-18 transcript hydration (gateway history) — never clobbers live state. */
+  hydrateMessages: (sessionId: string, messages: ChatMessage[]) => void;
   setActiveRun: (sessionId: string, run: ActiveRun | null) => void;
   updateRunStatus: (sessionId: string, status: RunStatus) => void;
   addToolCall: (sessionId: string, messageId: string, tool: ToolCall) => void;
@@ -142,6 +144,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
     next.set(sessionId, msgs.map(m =>
       m.id === messageId ? { ...m, content: m.content + delta } : m
     ));
+    return { messagesBySession: next };
+  }),
+
+  hydrateMessages: (sessionId, messages) => set((state) => {
+    const existing = state.messagesBySession.get(sessionId);
+    // Only fills an EMPTY session — live/optimistic state always wins.
+    if (existing && existing.length > 0) return state;
+    const next = new Map(state.messagesBySession);
+    next.set(sessionId, messages);
     return { messagesBySession: next };
   }),
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -12,6 +12,7 @@ import { SessionSyncEngine } from '@/services/session-sync';
 import { useSessionActions } from '@/hooks/useSessionActions';
 import { useForegroundSync } from '@/hooks/useForegroundSync';
 import { SessionRow } from '@/components/SessionRow';
+import { useGatewayAPISafe } from './composition';
 import type { RootStackParamList } from './navigation';
 
 type SessionsNav = NativeStackNavigationProp<RootStackParamList>;
@@ -23,19 +24,15 @@ export default function SessionsScreen() {
   const { loading, error, showArchived, setShowArchived, getVisibleSessions, upsertSessions, setLoading, setError, updateWatermark, lastSyncWatermark } =
     useSessionsStore();
 
-  const api = useMemo(
-    () => (activeGatewayId ? useGatewayStore.getState().gateways.find((g) => g.id === activeGatewayId) : null),
-    [activeGatewayId],
-  );
+  // Composition root is the only GatewayAPI source (NFR-6, audit W2).
+  const api = useGatewayAPISafe(activeGatewayId);
 
   const [initialSyncDone, setInitialSyncDone] = useState(false);
   const sessions = getVisibleSessions();
 
   const runSync = useCallback(async () => {
     if (!api || !activeGatewayId) return;
-    const { GatewayAPI } = await import('@/services/gateway-api');
-    const client = new GatewayAPI(api.base_url, activeGatewayId);
-    const engine = new SessionSyncEngine(client);
+    const engine = new SessionSyncEngine(api);
     setLoading(true);
     setError(null);
     try {
@@ -76,7 +73,7 @@ export default function SessionsScreen() {
     ),
   );
 
-  const { createSession, renameSession, deleteSession, forkSession } = useSessionActions(activeGatewayId ?? '');
+  const { createSession, renameSession, deleteSession, forkSession } = useSessionActions(activeGatewayId ?? '', api);
 
   const openChat = useCallback(
     (session: SessionRowType) => {
@@ -118,6 +115,14 @@ export default function SessionsScreen() {
   const showContextMenu = useCallback(
     (session: SessionRowType) => {
       Alert.alert(session.title, undefined, [
+        {
+          text: 'View Details',
+          onPress: () => {
+            if (activeGatewayId) {
+              navigation.navigate('SessionDetail', { sessionId: session.id, gatewayId: activeGatewayId });
+            }
+          },
+        },
         { text: 'Rename (KR-7)', onPress: () => promptRename(session) },
         {
           text: 'Fork (KR-7)',
@@ -129,7 +134,7 @@ export default function SessionsScreen() {
         { text: 'Cancel', style: 'cancel' },
       ]);
     },
-    [promptRename, forkSession, confirmDelete],
+    [navigation, activeGatewayId, promptRename, forkSession, confirmDelete],
   );
 
   const newSession = useCallback(() => {

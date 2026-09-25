@@ -25,7 +25,7 @@ import {
 } from '@/store/chat';
 import { useGatewayAPI, useServices, useAnalyticsQueries } from './composition';
 import { fetchModelPricing } from '@/analytics/cost-enrichment';
-import { loadCapabilities, selectChatTransport } from '@/services/capabilities';
+import { loadCapabilities, selectChatTransport, type GatewayCapabilities } from '@/services/capabilities';
 import { sendChatMessageFallback } from '@/services/session-chat-fallback';
 import { promptQueue } from '@/services/prompt-queue';
 import { showVisionWarning } from '@/services/vision';
@@ -34,6 +34,7 @@ import { ApprovalCard } from '@/components/ApprovalCard';
 import { ChatComposer } from '@/components/ChatComposer';
 import { ToolActivityCard } from '@/components/ToolActivityCard';
 import { useScrollBehavior } from '@/hooks/useScrollBehavior';
+import type { SessionMessage } from '@/services/gateway-api';
 import type { RootStackParamList } from './navigation';
 
 type ChatRoute = RouteProp<RootStackParamList, 'Chat'>;
@@ -59,16 +60,44 @@ export default function ChatScreen() {
     return caps ? selectChatTransport(caps) : 'runs';
   }, [gatewayId]);
 
+  // NFR-4: hide unsupported features rather than break (audit C3). Caps cache
+  // is MMKV-backed and re-probed on foreground — refresh on focus.
+  const [caps, setCaps] = useState<GatewayCapabilities | null>(() => loadCapabilities(gatewayId));
+  useFocusEffect(
+    useCallback(() => {
+      setCaps(loadCapabilities(gatewayId));
+    }, [gatewayId]),
+  );
+  const approvalsSupported = caps ? caps.approvalsSupported : true;
+  const steerSupported = caps ? caps.steerStopSupported : true;
+
   // KR-11: Detach/reattach on focus — including after app relaunch. The read
   // of the MMKV tracked run happens inside the effect so it re-checks every
   // focus even if the store never held the active run in memory.
   useFocusEffect(
     useCallback(() => {
+      // KR-18 transcript hydration (audit C1): chat after relaunch shows only
+      // the in-memory session's messages — fetch gateway history when empty.
+      if (useChatStore.getState().getMessages(sessionId).length === 0) {
+        void api.getSessionMessages(sessionId)
+          .then((history) => {
+            if (history.length > 0) {
+              useChatStore.getState().hydrateMessages(
+                sessionId,
+                history.map(toChatMessage),
+              );
+            }
+          })
+          .catch(() => {
+            // Offline / gateway error — next focus retries; the offline
+            // banner + manual retry cover live sending (NFR-3).
+          });
+      }
       // In-memory run OR a run persisted before relaunch (KR-11/13)
       if (useChatStore.getState().activeRuns.get(sessionId) || loadTrackedRun(sessionId)) {
         void runsManager.reattachRun(gatewayId, sessionId);
       }
-    }, [gatewayId, sessionId, runsManager]),
+    }, [api, gatewayId, sessionId, runsManager]),
   );
 
   // KR-13: restore pending approval card on relaunch (app-initiated runs only)
@@ -127,11 +156,14 @@ export default function ChatScreen() {
       } else {
         await sendViaSessionChatFallback(api, sessionId, text);
       }
-    } else {
+    } else if (steerSupported) {
       // KR-14: mid-run — the send button steers the active run
       void runsManager.steer(gatewayId, sessionId, text);
+    } else {
+      // Gateway can't steer — queue instead of breaking (NFR-4)
+      promptQueue.enqueue(sessionId, text);
     }
-  }, [isRunActive, transport, gatewayId, sessionId, runsManager, api]);
+  }, [isRunActive, transport, steerSupported, gatewayId, sessionId, runsManager, api]);
 
   // KR-16: queue action from the composer
   const handleQueue = useCallback((text: string) => {
@@ -175,7 +207,7 @@ export default function ChatScreen() {
           </Pressable>
         )}
 
-        {approval && (
+        {approval && approvalsSupported && (
           <View style={styles.approvalDock}>
             <ApprovalCard
               approval={approval}
@@ -188,6 +220,7 @@ export default function ChatScreen() {
           key={sessionId}
           sessionId={sessionId}
           activeRun={isRunActive}
+          steerSupported={steerSupported}
           onSend={(t) => void handleSend(t)}
           onSteer={(t) => void handleSend(t)}
           onQueue={handleQueue}
@@ -258,6 +291,27 @@ async function sendViaSessionChatFallback(
   if (active?.runId === `fallback:${assistantMessageId}`) {
     useChatStore.getState().setActiveRun(sessionId, { ...active, disconnectFn: disconnect });
   }
+}
+
+// === Transcript hydration (KR-18, audit C1) ===
+
+/** Map a gateway transcript message to a ChatMessage (history render). */
+function toChatMessage(m: SessionMessage, index: number): ChatMessage {
+  const meta = m as SessionMessage & { id?: unknown; timestamp?: unknown; created_at?: unknown };
+  const rawTs = typeof meta.timestamp === 'number'
+    ? meta.timestamp
+    : typeof meta.created_at === 'number'
+      ? meta.created_at
+      : Date.now();
+  return {
+    id: typeof meta.id === 'string' ? meta.id : `history:${index}`,
+    // Tool transcript entries render as system notes in the chat transcript
+    role: m.role === 'tool' ? 'system' : m.role,
+    content: m.content,
+    // Wire note: epoch-seconds vs ms unverified per §9a — normalize.
+    timestamp: rawTs < 1e12 ? rawTs * 1000 : rawTs,
+    isStreaming: false,
+  };
 }
 
 // === Message rendering (KR-18) ===

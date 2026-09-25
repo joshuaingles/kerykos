@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { GatewayAPI } from '@/services/gateway-api';
 
 export interface Gateway {
   id: string;
@@ -34,19 +33,3 @@ export const useGatewayStore = create<GatewayStore>((set) => ({
   })),
   setActive: (id) => set({ activeGatewayId: id }),
 }));
-
-/**
- * KR-4a: build a GatewayAPI for a gateway by id. Credentials are resolved
- * inside GatewayAPI per call (gateway id keyed — NEVER a global key).
- */
-export function apiForGateway(gatewayId: string): GatewayAPI | null {
-  const gw = useGatewayStore.getState().gateways.find((g) => g.id === gatewayId);
-  if (!gw) return null;
-  return new GatewayAPI(gw.base_url, gatewayId);
-}
-
-/** KR-5a: GatewayAPI for the currently active gateway, or null if unpaired. */
-export function apiForActiveGateway(): GatewayAPI | null {
-  const { activeGatewayId } = useGatewayStore.getState();
-  return activeGatewayId ? apiForGateway(activeGatewayId) : null;
-}

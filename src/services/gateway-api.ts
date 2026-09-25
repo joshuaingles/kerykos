@@ -44,6 +44,11 @@ export class GatewayAPI {
     if (!response.ok) {
       throw new GatewayError(response.status, await response.text());
     }
+    // Session-creating calls (createSession/fork/createRun) echo
+    // X-Hermes-Session-Id (+ X-Hermes-Session-Key) on their responses —
+    // capture here at the only layer holding the raw Response (audit W3).
+    // No-op unless the echo headers are present.
+    this.captureSessionEcho(response, this.gatewayId);
     return response.json() as Promise<T>;
   }
 

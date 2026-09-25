@@ -77,6 +77,22 @@ export function useGatewayAPI(gatewayId: string): GatewayAPI {
   return useServices().getApi(gatewayId);
 }
 
+/**
+ * Non-throwing variant of useGatewayAPI for screens that can render before
+ * pairing completes (NFR-6: the composition root is the ONLY place a
+ * GatewayAPI is constructed). Returns null for an unknown/unset gateway id
+ * instead of throwing, so early-render screens degrade gracefully.
+ */
+export function useGatewayAPISafe(gatewayId: string | null): GatewayAPI | null {
+  const services = useServices();
+  if (!gatewayId) return null;
+  try {
+    return services.getApi(gatewayId);
+  } catch {
+    return null;
+  }
+}
+
 /** Phase-5 §5.3's hook — analytics queries bound to a gateway. */
 export function useAnalyticsQueries(gatewayId: string): AnalyticsQueries {
   // Queries themselves key on gatewayId in SQL; the service instance is shared.

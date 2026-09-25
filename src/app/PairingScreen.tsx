@@ -53,7 +53,7 @@ export default function PairingScreen() {
   const [errorState, setErrorState] = useState<PairErrorState>(null);
   const [versionWarning, setVersionWarning] = useState<string | null>(null);
   const [warningModalVisible, setWarningModalVisible] = useState(false);
-  const [httpWarningSeen, setHttpWarningSeen] = useState(false);
+  const [httpHintVisible, setHttpHintVisible] = useState(false);
 
   const proceedToPair = async () => {
     const url = baseUrl.trim().replace(/\/+$/, '');
@@ -134,7 +134,7 @@ export default function PairingScreen() {
 
   const onDismissHttpWarning = (proceed: boolean) => {
     setWarningModalVisible(false);
-    setHttpWarningSeen(true);
+    setHttpHintVisible(true);
     const url = baseUrl.trim();
     if (url) {
       setSetting(`http_warn_${url}`, url);
@@ -162,7 +162,7 @@ export default function PairingScreen() {
         autoCorrect={false}
         keyboardType="url"
         value={baseUrl}
-        onChangeText={(t) => { setBaseUrl(t); setHttpWarningSeen(false); }}
+        onChangeText={(t) => { setBaseUrl(t); setHttpHintVisible(false); }}
       />
       <TextInput
         style={[styles.input, { backgroundColor: tokens.card, borderColor: tokens.border, color: tokens.text }]}
@@ -175,7 +175,7 @@ export default function PairingScreen() {
         onChangeText={setApiKey}
       />
 
-      {httpWarningSeen && shouldShowHttpWarning(baseUrl.trim()) && (
+      {httpHintVisible && shouldShowHttpWarning(baseUrl.trim()) && (
         <Text style={[styles.httpHint, { color: tokens.warning }]}>
           Plain HTTP: credentials and chats will travel unencrypted. Use Tailscale or an HTTPS proxy outside your home network.
         </Text>

@@ -17,6 +17,8 @@ const MAX_HEIGHT = 120;
 export type ChatComposerProps = {
   sessionId: string;
   activeRun: boolean;
+  /** Gateway supports steering (run_steer + run_stop caps). Default true. */
+  steerSupported?: boolean;
   /** Normal send (runs when idle). */
   onSend: (text: string) => void;
   /** KR-14: mid-run steering. */
@@ -32,6 +34,7 @@ export type ChatComposerProps = {
 export function ChatComposer({
   sessionId,
   activeRun,
+  steerSupported = true,
   onSend,
   onSteer,
   onQueue,
@@ -85,8 +88,14 @@ export function ChatComposer({
     }
 
     if (activeRun) {
-      // Mid-run: send button steers (KR-14); "Queue instead" defers (KR-16).
-      onSteer(trimmed);
+      // Mid-run: send button steers (KR-14) when the gateway supports it;
+      // otherwise it queues (NFR-4: hide unsupported, don't break). "Queue
+      // instead" defers explicitly (KR-16).
+      if (steerSupported) {
+        onSteer(trimmed);
+      } else {
+        onQueue(trimmed);
+      }
     } else {
       onSend(trimmed);
     }
@@ -135,7 +144,11 @@ export function ChatComposer({
             setHeight(Math.min(h, MAX_HEIGHT));
           }}
           style={[styles.input, { height: Math.max(MIN_INPUT_HEIGHT, height), color: tokens.text }]}
-          placeholder={activeRun ? 'Steer the run, or queue…' : 'Message…'}
+          placeholder={
+            activeRun
+              ? (steerSupported ? 'Steer the run, or queue…' : 'Run active — messages will be queued')
+              : 'Message…'
+          }
           placeholderTextColor={tokens.muted}
         />
       </View>
@@ -147,12 +160,12 @@ export function ChatComposer({
             { color: text.trim() ? tokens.accent : tokens.muted },
           ]}
         >
-          {activeRun ? 'Steer' : 'Send'}
+          {activeRun ? (steerSupported ? 'Steer' : 'Queue') : 'Send'}
         </Text>
       </Pressable>
 
-      {/* KR-16: queue action — available mid-run with composed text */}
-      {activeRun && text.trim() && (
+      {/* KR-16: queue action — only distinct from send when steering exists */}
+      {activeRun && steerSupported && text.trim() && (
         <Pressable
           onPress={() => {
             promptQueue.enqueue(sessionId, text.trim());
