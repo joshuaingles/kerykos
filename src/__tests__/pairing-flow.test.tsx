@@ -6,6 +6,8 @@
  */
 import React from 'react';
 import { fireEvent, waitFor, act } from '@testing-library/react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import PairingScreen from '@/app/PairingScreen';
 import { renderThemeProvider, createFetchMock, resetMMKV, resetSecureStore, type FetchCall } from '@/test/helpers';
 import { useGatewayStore } from '@/store/gateway';
@@ -20,6 +22,25 @@ const GATEWAY_ID = '00000000-0000-4000-8000-000000000042';
 jest.spyOn(uuidModule, 'v4').mockReturnValue(GATEWAY_ID);
 
 type Screen = Awaited<ReturnType<typeof renderThemeProvider>>;
+
+// Dummy route the screen navigates to after successful pairing.
+function MainStub(): null {
+  return null;
+}
+
+// Wraps PairingScreen in the real navigator stack (Pairing → Main) so any
+// useNavigation() calls inside the screen resolve without throwing.
+function renderWithNav(ui: React.ReactElement): Screen {
+  const Stack = createNativeStackNavigator<{ Pairing: undefined; Main: undefined }>();
+  return renderThemeProvider(
+    <NavigationContainer>
+      <Stack.Navigator initialRouteName="Pairing">
+        <Stack.Screen name="Pairing">{() => ui}</Stack.Screen>
+        <Stack.Screen name="Main" component={MainStub} />
+      </Stack.Navigator>
+    </NavigationContainer>,
+  );
+}
 
 function calls(): FetchCall[] {
   return (globalThis.fetch as unknown as { calls: FetchCall[] }).calls;
