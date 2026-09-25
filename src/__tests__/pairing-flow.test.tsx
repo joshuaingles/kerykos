@@ -11,6 +11,13 @@ import { renderThemeProvider, createFetchMock, resetMMKV, resetSecureStore, type
 import { useGatewayStore } from '@/store/gateway';
 import { AuthService } from '@/services/auth';
 import { getSetting } from '@/services/storage';
+import * as uuidModule from 'uuid';
+
+// PairingScreen generates its gateway id via uuid v4 — pinned so tests can
+// pre-seed the SecureStore key the GatewayAPI probe resolves (the probe
+// authenticates against the typed key before the screen persists it).
+const GATEWAY_ID = '00000000-0000-4000-8000-000000000042';
+jest.spyOn(uuidModule, 'v4').mockReturnValue(GATEWAY_ID);
 
 type Screen = Awaited<ReturnType<typeof renderThemeProvider>>;
 
@@ -40,12 +47,16 @@ const FULL_CAPS = {
 };
 
 describe('§5.1 Pairing flow integration', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     resetSecureStore();
     resetMMKV();
     useGatewayStore.setState({ gateways: [], activeGatewayId: null });
     createFetchMock([]);
     jest.clearAllMocks();
+    jest.spyOn(uuidModule, 'v4').mockReturnValue(GATEWAY_ID);
+    // GatewayAPI resolves the key from SecureStore at request time — seed the
+    // probe credential under the id the screen will generate.
+    await AuthService.storeKey(GATEWAY_ID, 'sk-test-key');
   });
 
   const seed = async (screen: Screen): Promise<void> => {
@@ -100,5 +111,22 @@ describe('§5.1 Pairing flow integration', () => {
 
   test.todo('PF-06 trailing slashes stripped from the paired URL');
 
-  test.todo('empty URL or key → no-op (no pairing attempted)');
+  it('empty URL or key → no-op (no pairing attempted)', async () => {
+    createFetchMock([
+      { path: '/v1/health', handler: { status: 200, json: { status: 'ok', platform: 'hermes-agent', version: '0.21.3' } } },
+      { path: '/v1/capabilities', handler: { status: 200, json: FULL_CAPS } },
+    ]);
+
+    const screen = await renderThemeProvider(<PairingScreen />);
+
+    // nothing filled
+    await fireEvent.press(screen.getByText('Pair Gateway'));
+    // URL filled, key empty
+    await fireEvent.changeText(screen.getByPlaceholderText('http://192.168.1.5:8642'), 'https://gw.example.com:8642');
+    await fireEvent.press(screen.getByText('Pair Gateway'));
+
+    expect(calls()).toHaveLength(0);
+    expect(useGatewayStore.getState().gateways).toHaveLength(0);
+    expect(screen.queryByText(/API key was rejected|Unreachable|Gateway down/)).toBeNull();
+  });
 });
