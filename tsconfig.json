@@ -6,10 +6,11 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "exactOptionalPropertyTypes": false,
+    "types": ["jest", "node"],
     "paths": {
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src/**/*", "app.json"],
+  "include": ["src/**/*", "jest.setup.ts", "app.json"],
   "exclude": ["node_modules"]
 }
