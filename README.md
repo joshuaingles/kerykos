@@ -1,10 +1,6 @@
 <p align="center">
-  <img src="assets/kerykos-icon.jpg" alt="Kerykos" width="128" />
+  <img src="assets/kerykos-banner.jpg" alt="Kerykos" />
 </p>
-
-# Kerykos
-
-![CI](https://github.com/joshuaingles/kerykos/actions/workflows/ci.yml/badge.svg)
 
 A companion app for [Hermes Agent](https://github.com/nousresearch/hermes-agent) on iOS and Android. Manage your self-hosted AI agent from your phone — chat, monitor sessions, track costs, and steer runs in real time.
 
