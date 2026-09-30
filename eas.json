@@ -10,7 +10,8 @@
     "preview": {
       "distribution": "internal",
       "ios": {
-        "simulator": false
+        "simulator": false,
+        "autoIncrement": true
       }
     },
     "production": {
@@ -27,11 +28,16 @@
   "submit": {
     "production": {
       "ios": {
-        "appleId": "your-apple-id@example.com",
-        "ascAppId": "1234567890"
+        // Placeholder values removed — fill in real values before running
+        // `eas submit --platform ios`, or let EAS prompt you interactively.
+        // See https://docs.expo.dev/submit/eas-json/
+        // "appleId": "your-apple-id@example.com",
+        // "ascAppId": "1234567890"
       },
       "android": {
-        "serviceAccountKeyPath": "./google-service-account.json"
+        // Path to the Google Service Account JSON key (gitignored — never
+        // commit real credentials). Set before `eas submit --platform android`.
+        // "serviceAccountKeyPath": "./google-service-account.json"
       }
     }
   }

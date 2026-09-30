@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "assets/**"
+      - ".github/workflows/ci.yml"
+      - "app.json"
+      - "eas.json"
+      - "eslint.config.js"
+      - "jest.config.js"
+      - "jest.setup.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "assets/**"
+      - ".github/workflows/ci.yml"
+      - "app.json"
+      - "eas.json"
+      - "eslint.config.js"
+      - "jest.config.js"
+      - "jest.setup.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Unit & integration tests
+        run: npx jest --ci
+
+      - name: Validate project health
+        run: npx expo-doctor
+        continue-on-error: true
