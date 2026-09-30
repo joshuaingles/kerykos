@@ -5,9 +5,9 @@ with the Apache License, Version 2.0 as the Change License.
 
 ## License
 
-Copyright © 2026 [Your Name]
+Copyright © 2026 Joshua Ingles
 
-Licensor: [Your Name]
+Licensor: Joshua Ingles
 
 Software: Kerykos
 
@@ -18,7 +18,7 @@ Change License: Apache License, Version 2.0
 ## Source Code
 
 The source code for this software is available at:
-https://github.com/[your-username]/kerykos
+https://github.com/joshuaingles/kerykos
 
 ## Terms
 
