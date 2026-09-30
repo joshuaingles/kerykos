@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/kerykos-icon.jpg" alt="Kerykos" width="128" />
+</p>
+
 # Kerykos
 
 ![CI](https://github.com/joshuaingles/kerykos/actions/workflows/ci.yml/badge.svg)
