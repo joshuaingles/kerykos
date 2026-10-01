@@ -9,7 +9,7 @@ import React from 'react';
 import { fireEvent, waitFor, act } from '@testing-library/react-native';
 import { renderThemeProvider } from '@/test/helpers';
 import { ProUpgradePrompt } from '@/components/ProUpgradePrompt';
-import { LicenseService } from '@/services/license';
+import PurchasesModule from 'react-native-purchases';
 
 jest.mock('react-native-purchases', () => ({
   configure: jest.fn(async () => undefined),
@@ -23,15 +23,12 @@ jest.mock('react-native-purchases', () => ({
   LOG_LEVEL: { DEBUG: 'DEBUG', INFO: 'INFO', WARN: 'WARN', ERROR: 'ERROR' },
 }));
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-require
-const Purchases = require('react-native-purchases') as {
+const Purchases = PurchasesModule as unknown as {
   configure: jest.Mock;
   getOfferings: jest.Mock;
   purchasePackage: jest.Mock;
   restorePurchases: jest.Mock;
 };
-
-type Screen = Awaited<ReturnType<typeof renderThemeProvider>>;
 
 interface PackageLike {
   identifier: string;

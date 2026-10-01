@@ -5,9 +5,10 @@
  * queue; images only when idle. Draft persistence is KR-16 (MMKV backend,
  * debounced 500ms with flush-only guarantee).
  */
-import { fireEvent, waitFor, act } from '@testing-library/react-native';
+import { fireEvent, act } from '@testing-library/react-native';
 import { renderThemeProvider, resetMMKV } from '@/test/helpers';
 import { ChatComposer } from '@/components/ChatComposer';
+import { pickImageForChat as pickImageForChatModule } from '@/services/image-picker';
 import { promptQueue } from '@/services/prompt-queue';
 import { saveDraft, loadDraft } from '@/services/drafts';
 
@@ -18,8 +19,7 @@ jest.mock('@/services/image-picker', () => ({
   formatImageContent: jest.fn(),
 }));
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-require
-const { pickImageForChat } = require('@/services/image-picker') as { pickImageForChat: jest.Mock };
+const pickImageForChat = pickImageForChatModule as unknown as jest.Mock;
 
 const SESSION = 'sess_1';
 const DATA_URL = `data:image/png;base64,${'Q'.repeat(40)}`;
