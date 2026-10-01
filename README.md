@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/kerykos-banner.jpg" alt="Kerykos" />
+  <img src="assets/kerykos-banner.png" alt="Kerykos" />
 </p>
 
 A companion app for [Hermes Agent](https://github.com/nousresearch/hermes-agent) on iOS and Android. Manage your self-hosted AI agent from your phone — chat, monitor sessions, track costs, and steer runs in real time.
