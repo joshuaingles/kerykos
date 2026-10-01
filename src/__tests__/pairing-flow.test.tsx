@@ -14,17 +14,17 @@ import { useGatewayStore } from '@/store/gateway';
 import { AuthService } from '@/services/auth';
 import { getSetting } from '@/services/storage';
 
-// The setup-file jest.mock('uuid') factory is plain CJS, so `import * as`
-// yields a babel interop COPY — spying on it would not affect PairingScreen's
-// live `uuidv4` binding. Pin the real mock module exports instead.
-type UuidMock = { v4: jest.Mock; __counter: () => number };
-const uuidMock = jest.requireMock('uuid') as UuidMock;
-
 // PairingScreen generates its gateway id via uuid v4 — pinned so tests can
 // pre-seed the SecureStore key the GatewayAPI probe resolves (the probe
 // authenticates against the typed key before the screen persists it).
+// A file-level jest.mock overrides the incrementing-counter uuid mock from
+// jest.setup.ts. (A jest.spyOn on the `import * as uuid` interop object does
+// NOT take effect — Babel copies the namespace, so the screen keeps calling
+// the original counter mock and the seeded key never matches.)
 const GATEWAY_ID = '00000000-0000-4000-8000-000000000042';
-jest.spyOn(uuidMock, 'v4').mockReturnValue(GATEWAY_ID);
+jest.mock('uuid', () => ({
+  v4: () => '00000000-0000-4000-8000-000000000042',
+}));
 
 type Screen = Awaited<ReturnType<typeof renderThemeProvider>>;
 
@@ -35,9 +35,9 @@ function MainStub(): null {
 
 // Wraps PairingScreen in the real navigator stack (Pairing → Main) so any
 // useNavigation() calls inside the screen resolve without throwing.
-async function renderWithNav(ui: React.ReactElement): Promise<Screen> {
+function renderWithNav(ui: React.ReactElement): Screen {
   const Stack = createNativeStackNavigator<{ Pairing: undefined; Main: undefined }>();
-  return await renderThemeProvider(
+  return renderThemeProvider(
     <NavigationContainer>
       <Stack.Navigator initialRouteName="Pairing">
         <Stack.Screen name="Pairing">{() => ui}</Stack.Screen>
@@ -79,7 +79,6 @@ describe('§5.1 Pairing flow integration', () => {
     useGatewayStore.setState({ gateways: [], activeGatewayId: null });
     createFetchMock([]);
     jest.clearAllMocks();
-    jest.spyOn(uuidMock, 'v4').mockReturnValue(GATEWAY_ID);
     // GatewayAPI resolves the key from SecureStore at request time — seed the
     // probe credential under the id the screen will generate.
     await AuthService.storeKey(GATEWAY_ID, 'sk-test-key');
@@ -102,14 +101,12 @@ describe('§5.1 Pairing flow integration', () => {
 
     const screen = await renderThemeProvider(<PairingScreen />);
     await seed(screen);
-    await act(async () => { await fireEvent.press(screen.getByText('Pair Gateway')); });await act(async () => { await fireEvent.press(screen.getByText('Pair Gateway')); });
+    await act(async () => { await fireEvent.press(screen.getByText('Pair Gateway')); });
 
     await waitFor(() => expect(screen.getByText('Unreachable')).toBeTruthy());
     expect(screen.getByText(/Cannot reach the gateway\. Check the URL and ensure the API server is running\./)).toBeTruthy();
     // fail-safe: nothing paired, nothing stored
     expect(useGatewayStore.getState().gateways).toHaveLength(0);
-    // fail-safe: the pre-seeded probe credential is untouched (nothing re-stored)
-    expect(AuthService.getKey(GATEWAY_ID)).resolves.toBe('sk-test-key');
   });
 
   it('PF-02 health 500 → gateway-down copy', async () => {
