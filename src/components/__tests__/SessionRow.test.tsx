@@ -3,7 +3,8 @@
  */
 import { fireEvent, act } from '@testing-library/react-native';
 import { renderThemeProvider, makeSession } from '@/test/helpers';
-import { SessionRow, type SessionRow as SessionRowData } from '@/components/SessionRow';
+import { SessionRow } from '@/components/SessionRow';
+import type { SessionRow as SessionRowData } from '@/store/sessions';
 import { deriveSessionRow } from '@/store/sessions';
 import { lightBase } from '@/theme/tokens';
 import type { SessionResponse } from '@/services/gateway-api';

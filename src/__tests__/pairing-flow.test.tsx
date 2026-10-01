@@ -35,7 +35,7 @@ function MainStub(): null {
 
 // Wraps PairingScreen in the real navigator stack (Pairing → Main) so any
 // useNavigation() calls inside the screen resolve without throwing.
-function renderWithNav(ui: React.ReactElement): Screen {
+async function renderWithNav(ui: React.ReactElement): Promise<Screen> {
   const Stack = createNativeStackNavigator<{ Pairing: undefined; Main: undefined }>();
   return renderThemeProvider(
     <NavigationContainer>
