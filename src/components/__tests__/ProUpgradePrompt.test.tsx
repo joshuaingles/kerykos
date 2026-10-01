@@ -50,10 +50,18 @@ describe('§3.5 ProUpgradePrompt', () => {
 
     const screen = await renderThemeProvider(<ProUpgradePrompt feature="Analytics" />);
 
-    expect(await screen.findByText('Pro Monthly — $9.99/mo')).toBeTruthy();
+    // First test in the suite pays the one-time TestRenderer/act cold-start
+    // (~500ms locally) — on slow CI runners this approaches Jest's 5000ms
+    // test timeout. Give the initial effect-driven render an explicit window
+    // and headroom on the test itself; findBy* still fails fast (good error)
+    // if the update genuinely never lands.
+    await waitFor(
+      () => expect(screen.getByText('Pro Monthly — $9.99/mo')).toBeTruthy(),
+      { timeout: 4000 },
+    );
     expect(screen.getByText(/Unlock/)).toBeTruthy(); // feature named in the title row
     expect(screen.queryByText(/Packages unavailable/)).toBeNull();
-  });
+  }, 10000);
 
   it('offerings failure → "Packages unavailable" empty state (§3.5)', async () => {
     Purchases.getOfferings.mockImplementationOnce(async () => {
